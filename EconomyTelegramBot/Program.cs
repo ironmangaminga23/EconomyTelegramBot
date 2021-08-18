@@ -2,7 +2,6 @@
 using System.Threading;
 using System.Threading.Tasks;
 using Telegram.Bot;
-using Telegram.Bot.Args;
 using Telegram.Bot.Extensions.Polling;
 
 namespace EconomyTelegramBot
@@ -20,10 +19,11 @@ namespace EconomyTelegramBot
 
             using var cts = new CancellationTokenSource();
 
+            var h = new Handler();
             // StartReceiving does not block the caller thread. Receiving is done on the ThreadPool.
             bot.StartReceiving(new DefaultUpdateHandler(
-                Handlers.HandleUpdateAsync, 
-                Handlers.HandleErrorAsync),
+                h.HandleUpdateAsync, 
+                h.HandleErrorAsync),
                                cts.Token);
 
             Console.WriteLine($"Start listening for @{me.Username}");
