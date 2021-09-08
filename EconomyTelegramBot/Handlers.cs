@@ -2,7 +2,7 @@
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
-using System.Net;
+using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
@@ -65,52 +65,76 @@ namespace EconomyTelegramBot
 
         private async Task BotOnMessageReceived(ITelegramBotClient botClient, Message message)
         {
-            using (var client = new HttpClient())
+            using var client = new HttpClient();
+            var res = await client.GetAsync($"{db}.json");
+            var content = await res.Content.ReadAsStringAsync();
+            var responseBody = JsonConvert.DeserializeObject<DbTable>(content);
+
+            //if (responseBody == null)
+            //{
+            //    table = new DbTable()
+            //    {
+            //        CurrentSummary = new CurrentSummary()
+            //        {
+            //            Sum = new Summary()
+            //            {
+            //                CommonSum = 0,
+            //                CommonAlko = 0,
+            //                CommonCoffee = 0,
+            //                CommonEntertainment = 0
+            //            },
+            //            CurrentMonth = DateTime.Now.Month
+            //        },
+            //        Archive = new Dictionary<int, Summary>() { }
+            //    };
+
+            //    string json = JsonConvert.SerializeObject(table);
+            //    StringContent httpContent = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+
+            //    var r = await client.PostAsync($"{db}/db.json", httpContent);
+            //}
+
+            if (message.Type != MessageType.Text)
+                return;
+                
+            var action = message.Text switch
             {
-                var res = await client.GetAsync($"{db}.json");
-                var content = await res.Content.ReadAsStringAsync();
-                var responseBody = JsonConvert.DeserializeObject<DbTable>(content);
+                "/help" => GetHelpInfo(botClient, message),
+                "/house" => SetHouseInfo(botClient, message, responseBody.House),
+                "/anal" => SendAnal(botClient, message, responseBody.CurrentSummary.Sum),
+                "/full_anal" => SendFullAnal(botClient, message, responseBody?.Archive ?? new Dictionary<int, Summary>()),
+                _ => int.TryParse(message.Text.Split(new char[] { ' ', '/' })[1], out int sum)
+                    ? SendInlineKeyboard(botClient, message, responseBody, sum)
+                    : NotUderstand(botClient, message)
+            };
 
-                //if (responseBody == null)
-                //{
-                //    table = new DbTable()
-                //    {
-                //        CurrentSummary = new CurrentSummary()
-                //        {
-                //            Sum = new Summary()
-                //            {
-                //                CommonSum = 0,
-                //                CommonAlko = 0,
-                //                CommonCoffee = 0,
-                //                CommonEntertainment = 0
-                //            },
-                //            CurrentMonth = DateTime.Now.Month
-                //        },
-                //        Archive = new Dictionary<int, Summary>() { }
-                //    };
+            await action;
+        }
 
-                //    string json = JsonConvert.SerializeObject(table);
-                //    StringContent httpContent = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
-
-                //    var r = await client.PostAsync($"{db}/db.json", httpContent);
-                //}
-
-                if (message.Type != MessageType.Text)
-                    return;
-
-                var test = message.Text.Split(new char[] { ' ', '/' });
-                Task action = message.Text switch
+        private async Task SetHouseInfo(
+            ITelegramBotClient botClient, Message message, IDictionary<string, Dictionary<int, int>> house)
+        {
+            var login = message.From.Username;
+            var current = DateTime.Now.Month;
+            var addSum = Int32.Parse(message.Text);
+            
+            if (house.TryGetValue(login, out var houseDictionary))
+            {
+                if (houseDictionary.TryGetValue(current, out var sum))
                 {
-                    "/help" => GetHelpInfo(botClient, message),
-                    "/anal" => SendAnal(botClient, message, responseBody.CurrentSummary.Sum),
-                    "/full_anal" => SendFullAnal(botClient, message, responseBody?.Archive ?? new Dictionary<int, Summary>()),
-                    _ => int.TryParse(message.Text.Split(new char[] { ' ', '/' })[1], out int sum)
-                        ? SendInlineKeyboard(botClient, message, responseBody, sum)
-                        : NotUderstand(botClient, message)
-                };
-
-                await action;
+                    sum += addSum;
+                }
+                else
+                {
+                    
+                }
             }
+            else
+            {
+                
+            }
+            
+            
         }
 
         private async Task NotUderstand(ITelegramBotClient botClient, Message message)
@@ -129,11 +153,11 @@ namespace EconomyTelegramBot
         private async Task SendFullAnal(
             ITelegramBotClient botClient, Message message, Dictionary<int, Summary> archive)
         {
-            foreach (var m_summary in archive)
+            foreach (var answer in archive
+                .Select(m_summary => $"Месяц - {m_summary.Key.ToMonth()}" +
+                 $" Полнная сумма - {m_summary.Value.CommonSum} Алкоголь - {m_summary.Value.CommonAlko}" +
+                 $" Развлекухи - {m_summary.Value.CommonEntertainment} Кофе - {m_summary.Value.CommonCoffee}"))
             {
-                string answer = $"Месяц - {m_summary.Key.ToMonth()}" +
-                    $" Полнная сумма - {m_summary.Value.CommonSum} Алкоголь - {m_summary.Value.CommonAlko}" +
-                    $" Развлекухи - {m_summary.Value.CommonEntertainment} Кофе - {m_summary.Value.CommonCoffee}";
                 await botClient.SendTextMessageAsync(chatId: message.Chat.Id, text: answer);
             }
         }
@@ -141,8 +165,8 @@ namespace EconomyTelegramBot
         private async Task SendInlineKeyboard(
             ITelegramBotClient botClient, Message message, DbTable table, int specialSum)
         {
-            DbTable newTable = table;
-            int current = DateTime.Now.Month;
+            var newTable = table;
+            var current = DateTime.Now.Month;
 
             await botClient.SendChatActionAsync(message.Chat.Id, ChatAction.Typing);
             var question = message.Text.Trim('/');
@@ -199,15 +223,15 @@ namespace EconomyTelegramBot
                 }
             }
 
-            string json = JsonConvert.SerializeObject(newTable);
-            StringContent httpContent = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+            var json = JsonConvert.SerializeObject(newTable);
+            var httpContent = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
 
             await client.PatchAsync($"{db}.json", httpContent);
         }
 
         private async Task SendAnal(ITelegramBotClient botClient, Message message, Summary summary)
         {
-            string answer = $"Полнная сумма - {summary.CommonSum} Алкоголь - {summary.CommonAlko}" +
+            var answer = $"Полнная сумма - {summary.CommonSum} Алкоголь - {summary.CommonAlko}" +
                 $" Развлекухи - {summary.CommonEntertainment} Кофе - {summary.CommonCoffee}";
             await botClient.SendTextMessageAsync(chatId: message.Chat.Id, text: answer);
         }

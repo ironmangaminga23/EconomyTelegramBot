@@ -1,6 +1,4 @@
-﻿
-
-namespace EconomyTelegramBot.Models
+﻿namespace EconomyTelegramBot.Models
 {
     public class CurrentSummary
     {

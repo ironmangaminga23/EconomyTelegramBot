@@ -4,11 +4,10 @@ namespace EconomyTelegramBot.Models
 {
     public class DbTable
     {
-
         public string Id { get; set; }
-
         public CurrentSummary CurrentSummary { get; set; }
-
+        
+        public Dictionary<string, Dictionary<int, int>> House { get; set; }
         public Dictionary<int, Summary> Archive { get; set; }
     }
 }
